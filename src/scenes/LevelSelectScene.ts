@@ -1,10 +1,11 @@
 /** Difficulty + level picker with lock/complete states persisted to storage. */
 import Phaser from "phaser";
-import { DIFFICULTIES, THEME, VIRTUAL_WIDTH } from "../config";
+import { DIFFICULTIES, safeTop, THEME, VIRTUAL_WIDTH } from "../config";
 import { drawRetroBackground } from "../ui/background";
-import { FONT, pixelButton, pixelText } from "../ui/widgets";
+import { drawStarRow, FONT, pixelButton, pixelText } from "../ui/widgets";
 import {
   LEVELS_PER_DIFFICULTY,
+  bestStars,
   highestCompleted,
   isUnlocked,
 } from "../game/progress";
@@ -26,17 +27,17 @@ export class LevelSelectScene extends Phaser.Scene {
     const W = VIRTUAL_WIDTH;
     drawRetroBackground(this);
 
-    pixelButton(this, 54, 44, 76, 40, "BACK", () => this.scene.start("Menu"), {
+    pixelButton(this, 54, 44 + safeTop(), 76, 40, "BACK", () => this.scene.start("Menu"), {
       size: 9,
     });
-    pixelText(this, W / 2 + 20, 44, "SELECT LEVEL", 15, THEME.accentHex);
+    pixelText(this, W / 2 + 20, 44 + safeTop(), "SELECT LEVEL", 15, THEME.accentHex);
 
     // Difficulty tabs.
     this.tabRefs = [];
     const startX = 56;
     DIFFICULTIES.forEach((d, i) => {
       const x = startX + i * 92;
-      const y = 118;
+      const y = 118 + safeTop();
       const g = this.add.graphics();
       this.tabRefs.push({ g, i });
       const label = pixelText(this, x, y, d.label, 8);
@@ -59,7 +60,7 @@ export class LevelSelectScene extends Phaser.Scene {
   private paintTabs(): void {
     this.tabRefs.forEach(({ g, i }) => {
       const x = 56 + i * 92;
-      const y = 118;
+      const y = 118 + safeTop();
       const active = i === this.diffIndex;
       g.clear();
       g.fillStyle(active ? THEME.accent : THEME.panel, 1);
@@ -87,7 +88,7 @@ export class LevelSelectScene extends Phaser.Scene {
     const info = pixelText(
       this,
       W / 2,
-      178,
+      178 + safeTop(),
       `${diff.colors} COLOURS  •  ${done}/${LEVELS_PER_DIFFICULTY} DONE`,
       9,
       THEME.inkDim,
@@ -97,7 +98,7 @@ export class LevelSelectScene extends Phaser.Scene {
     const cols = 3;
     const cellW = 108;
     const cellH = 92;
-    const gridTop = 240;
+    const gridTop = 240 + safeTop();
     const startX = W / 2 - cellW;
 
     for (let n = 0; n < LEVELS_PER_DIFFICULTY; n++) {
@@ -138,11 +139,12 @@ export class LevelSelectScene extends Phaser.Scene {
     c.add(g);
 
     if (unlocked) {
-      const num = pixelText(this, 0, completed ? -6 : 0, `${level}`, 20);
+      const num = pixelText(this, 0, completed ? -10 : 0, `${level}`, 20);
       c.add(num);
       if (completed) {
-        const star = pixelText(this, 0, 20, "CLEAR", 7, THEME.accentHex);
-        c.add(star);
+        const sg = this.add.graphics();
+        drawStarRow(sg, 0, 20, 8, 18, bestStars(diffKey, level));
+        c.add(sg);
       }
       c.setSize(w, h);
       // Hit area uses top-left-origin local coords (see note in widgets.ts).

@@ -11,7 +11,10 @@ const config: CapacitorConfig = {
   },
   ios: {
     backgroundColor: "#12101c",
-    contentInset: "always",
+    // Edge-to-edge (viewport-fit=cover) so the retro background fills the whole
+    // screen; the game insets its UI via safeTop()/safeBottom() to clear the
+    // Dynamic Island / home indicator.
+    contentInset: "never",
   },
 };
 

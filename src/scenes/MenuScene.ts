@@ -1,6 +1,6 @@
 /** Retro title screen: animated pixel logo, play / how-to, progress readout. */
 import Phaser from "phaser";
-import { THEME, VIRTUAL_HEIGHT, VIRTUAL_WIDTH } from "../config";
+import { safeBottom, safeTop, THEME, VIRTUAL_HEIGHT, VIRTUAL_WIDTH } from "../config";
 import { drawRetroBackground } from "../ui/background";
 import { FONT, pixelButton, pixelText } from "../ui/widgets";
 import { blockTextureKey } from "../render/textures";
@@ -83,7 +83,7 @@ export class MenuScene extends Phaser.Scene {
       yoyo: true,
       repeat: -1,
     });
-    pixelText(this, W / 2, H - 30, "v0.1  •  MADE WITH PHASER", 7, THEME.inkDim);
+    pixelText(this, W / 2, H - 30 - safeBottom(), "v0.1  •  MADE WITH PHASER", 7, THEME.inkDim);
 
     this.buildSoundToggle();
   }
@@ -91,7 +91,7 @@ export class MenuScene extends Phaser.Scene {
   /** Top-right speaker button that toggles (and persists) sound on/off. */
   private buildSoundToggle(): void {
     const ix = VIRTUAL_WIDTH - 42;
-    const iy = 52;
+    const iy = Math.max(52, safeTop() + 32);
     const g = this.add.graphics();
 
     const draw = () => {
@@ -178,13 +178,14 @@ export class MenuScene extends Phaser.Scene {
       "",
       "MOVES",
       "Tap a tube to lift its top",
-      "block, tap another to drop it.",
-      "Matching blocks move together.",
+      "block, then tap another to drop.",
+      "Same-colour blocks move as a",
+      "group - only if they ALL fit.",
       "",
       "RULES",
-      "A tube holds 4 blocks. You can",
-      "only pour onto empty tubes or",
-      "matching colours.",
+      "A tube holds 4 blocks. Pour only",
+      "onto an empty tube or a matching",
+      "colour with room for the group.",
       "",
       "No moves left = level failed.",
       "Use UNDO or RESTART anytime!",

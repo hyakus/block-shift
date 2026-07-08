@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import "@fontsource/press-start-2p";
 import { THEME, VIRTUAL_HEIGHT, VIRTUAL_WIDTH } from "./config";
 import { unlockAudio } from "./audio/sfx";
+import { initAds } from "./ads";
 import { BootScene } from "./scenes/BootScene";
 import { MenuScene } from "./scenes/MenuScene";
 import { LevelSelectScene } from "./scenes/LevelSelectScene";
@@ -28,6 +29,9 @@ const config: Phaser.Types.Core.GameConfig = {
 
 const game = new Phaser.Game(config);
 
+// Initialise AdMob (no-op on web). Safe to call at startup.
+void initAds();
+
 // Keep Phaser's cached canvas bounds in sync with the DOM. If the canvas moves
 // (layout shift, tab restore, address-bar collapse on mobile) without a refresh,
 // Phaser maps clicks to stale coordinates and buttons stop responding to taps.
@@ -46,9 +50,13 @@ game.events.once(Phaser.Core.Events.READY, () => setTimeout(refresh, 0));
 const unlock = () => {
   unlockAudio();
   window.removeEventListener("pointerdown", unlock);
+  window.removeEventListener("touchstart", unlock);
+  window.removeEventListener("touchend", unlock);
   window.removeEventListener("keydown", unlock);
 };
 window.addEventListener("pointerdown", unlock);
+window.addEventListener("touchstart", unlock);
+window.addEventListener("touchend", unlock);
 window.addEventListener("keydown", unlock);
 
 // Dev-only handle so the browser preview harness can inspect/drive the game.

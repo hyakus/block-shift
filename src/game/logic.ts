@@ -45,23 +45,24 @@ export function isSolved(board: Board): boolean {
  * How many blocks can actually move from `from` onto `to`, honouring:
  *  - can't pour a tube into itself
  *  - source must be non-empty
- *  - destination must have room
  *  - destination must be empty OR its top colour matches the source run colour
- * Returns 0 when the move is illegal.
+ *  - the destination must have room for the ENTIRE touching top run — you can't
+ *    split a group of same-colour blocks, so a run only moves if it fully fits.
+ * Returns the whole run length when the move is legal, otherwise 0.
  */
 export function movableCount(board: Board, from: number, to: number): number {
   if (from === to) return 0;
   const src = board[from];
   const dst = board[to];
   if (src.length === 0) return 0;
-  if (dst.length >= TUBE_CAPACITY) return 0;
 
   const color = src[src.length - 1];
   if (dst.length > 0 && dst[dst.length - 1] !== color) return 0;
 
   const run = topRunLength(src);
   const room = TUBE_CAPACITY - dst.length;
-  return Math.min(run, room);
+  if (room < run) return 0; // must be able to take every touching block
+  return run;
 }
 
 export function canMove(board: Board, from: number, to: number): boolean {

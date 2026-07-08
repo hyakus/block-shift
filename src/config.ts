@@ -27,6 +27,69 @@ function computeVirtualHeight(): number {
 
 export const VIRTUAL_HEIGHT = computeVirtualHeight();
 
+/**
+ * Read a CSS safe-area inset (Dynamic Island / notch / home indicator) in real
+ * pixels by probing `env(safe-area-inset-*)`, which only resolves when applied
+ * to an element. Returns 0 on the web / non-notched devices.
+ */
+function safeAreaInset(side: "top" | "bottom"): number {
+  if (typeof document === "undefined" || !document.body) return 0;
+  const probe = document.createElement("div");
+  probe.style.position = "fixed";
+  probe.style.left = "0";
+  probe.style.width = "0";
+  probe.style.height = "0";
+  probe.style.visibility = "hidden";
+  probe.style.setProperty(side, "0");
+  probe.style.setProperty(`padding-${side}`, `env(safe-area-inset-${side})`);
+  document.body.appendChild(probe);
+  const px = parseFloat(getComputedStyle(probe).getPropertyValue(`padding-${side}`)) || 0;
+  probe.remove();
+  return px;
+}
+
+/** Convert a real-pixel length to virtual/game units (canvas is width-fitted). */
+function toGameUnits(px: number): number {
+  const w = typeof window !== "undefined" && window.innerWidth ? window.innerWidth : VIRTUAL_WIDTH;
+  return Math.round((px * VIRTUAL_WIDTH) / w);
+}
+
+/**
+ * True on a Capacitor iOS device tall enough to have a notch / Dynamic Island
+ * and home indicator (where env() is unreliable and a fixed inset is needed).
+ * Old home-button iPhones (≈16:9) are excluded so they aren't over-inset.
+ */
+function needsFixedIOSInset(): boolean {
+  const cap = (window as unknown as { Capacitor?: { getPlatform?: () => string } })
+    .Capacitor;
+  const isIOS = !!cap?.getPlatform && cap.getPlatform() === "ios";
+  const tall = window.innerHeight / (window.innerWidth || 1) > 2.0;
+  return isIOS && tall;
+}
+
+// Safe-area insets in game units, computed lazily and cached. Prefer the real
+// CSS env() value (correct on the web and Android). It reliably returns 0 in the
+// Capacitor iOS WKWebView, so there we fall back to fixed insets big enough to
+// clear the status bar / notch / Dynamic Island and the home indicator.
+let _safeTop = -1;
+let _safeBottom = -1;
+
+/** Top inset (Dynamic Island / notch) in game units — add to top-anchored UI. */
+export function safeTop(): number {
+  if (_safeTop >= 0) return _safeTop;
+  const env = toGameUnits(safeAreaInset("top"));
+  _safeTop = env > 0 ? env : needsFixedIOSInset() ? toGameUnits(55) : 0;
+  return _safeTop;
+}
+
+/** Bottom inset (home indicator) in game units — add to bottom-anchored UI. */
+export function safeBottom(): number {
+  if (_safeBottom >= 0) return _safeBottom;
+  const env = toGameUnits(safeAreaInset("bottom"));
+  _safeBottom = env > 0 ? env : needsFixedIOSInset() ? toGameUnits(30) : 0;
+  return _safeBottom;
+}
+
 /** Blocks per tube. Fixed by the design spec. */
 export const TUBE_CAPACITY = 4;
 

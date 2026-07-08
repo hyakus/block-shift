@@ -11,11 +11,14 @@ install! 'cocoapods', :disable_input_output_paths => true
 def capacitor_pods
   pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
   pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
-
+  pod 'CapacitorCommunityAdmob', :path => '../../node_modules/@capacitor-community/admob'
 end
 
 target 'App' do
   capacitor_pods
+  # Pin the User Messaging Platform to 2.x: @capacitor-community/admob@6's
+  # consent code uses the pre-3.0 API (UMPConsentStatus), which 3.x renamed.
+  pod 'GoogleUserMessagingPlatform', '~> 2.3'
   # Add your Pods here
 end
 

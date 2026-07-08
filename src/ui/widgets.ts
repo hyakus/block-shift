@@ -112,3 +112,36 @@ export function pixelButton(
 function enabledColor(on: boolean): string {
   return on ? THEME.ink : cssHex(0x6a6390);
 }
+
+/** Fill a 5-point star of radius r into the graphics at (cx, cy). */
+export function fillStar(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  r: number,
+  color: number,
+): void {
+  const pts: Phaser.Geom.Point[] = [];
+  for (let i = 0; i < 10; i++) {
+    const rad = i % 2 === 0 ? r : r * 0.45;
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    pts.push(new Phaser.Geom.Point(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad));
+  }
+  g.fillStyle(color, 1);
+  g.fillPoints(pts, true);
+}
+
+/** Draw a row of 3 rating stars centred at (cx, cy); `earned` are gold, rest dim. */
+export function drawStarRow(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  r: number,
+  gap: number,
+  earned: number,
+): void {
+  for (let i = 0; i < 3; i++) {
+    const on = i < earned;
+    fillStar(g, cx + (i - 1) * gap, cy, on ? r : r * 0.82, on ? THEME.accent : 0x39335c);
+  }
+}
