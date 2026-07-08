@@ -1,0 +1,29 @@
+# Normalise line endings so they don't churn across macOS / Linux / Windows.
+# Text files are stored with LF in the repo; Git auto-detects text vs binary.
+* text=auto eol=lf
+
+# Windows scripts must keep CRLF or they can fail on Windows.
+*.bat        text eol=crlf
+*.cmd        text eol=crlf
+gradlew.bat  text eol=crlf
+
+# Unix shell scripts must stay LF.
+*.sh     text eol=lf
+gradlew  text eol=lf
+
+# Binary assets — never treated as text / never line-ending converted.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.svg   text
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.jar   binary
+*.keystore binary
+*.jks   binary
+*.pdf   binary

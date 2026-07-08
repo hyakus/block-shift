@@ -6,6 +6,28 @@ runs in the browser and packages natively for **Android** and **iOS**.
 Pour blocks between tubes until every tube holds a single colour. Classic
 "water/ball sort" gameplay with a retro menu and a modern pixel-art look.
 
+## Demo
+
+<p align="center">
+  <img src="docs/demo.gif" alt="Block Shift title screen" width="250">
+  &nbsp;&nbsp;
+  <img src="docs/gameplay.gif" alt="Sorting blocks in level 1" width="250">
+</p>
+
+_Record on a device and drop the clip in:_
+
+```bash
+# Android:  adb shell screenrecord --size 720x1560 /sdcard/demo.mp4   # Ctrl+C to stop
+#           adb pull /sdcard/demo.mp4 .
+# iOS sim:  xcrun simctl io booted recordVideo demo.mp4               # Ctrl+C to stop
+
+scripts/make-gif.sh demo.mp4        # → docs/demo.gif (crisp, pixel-perfect)
+```
+
+> Prefer a real video with sound? Drag the `.mp4` straight into this README on
+> github.com (or a PR/issue) — GitHub hosts it and renders an inline player, so
+> you don't commit the file.
+
 ## Tech
 
 - **[Phaser 3](https://phaser.io/)** — 2D game engine (scenes, input, crisp pixel scaling)
@@ -48,8 +70,9 @@ npx cap open ios         # open in Xcode           ->  run on device/simulator
 
 ## How to play
 
-- **Tap a tube** to lift its top block (matching blocks lift together).
-- **Tap another tube** to pour — only onto an empty tube or a matching top colour.
+- **Tap a tube** to lift its top block (touching same-colour blocks lift together).
+- **Tap another tube** to pour — only onto an empty tube or a matching top colour,
+  and only if it has room for the **whole** group (you can't split a run).
 - Each tube holds **4 blocks**. Clear a tube by filling it with one colour.
 - **UNDO / RESTART / HINT** are always available. If no legal move remains, the
   level is failed.
