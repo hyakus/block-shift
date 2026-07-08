@@ -30,7 +30,18 @@ function ensure(): AudioContext | null {
  */
 export function unlockAudio(): void {
   const c = ensure();
-  if (c && c.state === "suspended") void c.resume();
+  if (!c) return;
+  if (c.state === "suspended") void c.resume();
+  // iOS/WKWebView needs a real (silent) buffer *started inside the gesture* to
+  // fully unlock Web Audio — resume() alone isn't enough there.
+  try {
+    const src = c.createBufferSource();
+    src.buffer = c.createBuffer(1, 1, 22050);
+    src.connect(c.destination);
+    src.start(0);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function isMuted(): boolean {
