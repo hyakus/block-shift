@@ -1,0 +1,26 @@
+{
+  "name": "block-shift",
+  "version": "0.1.0",
+  "description": "Block Shift — a cross-platform pixel-art block/water sort puzzle (web, Android, iOS)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "sync": "cap sync",
+    "android": "cap run android",
+    "ios": "cap run ios"
+  },
+  "dependencies": {
+    "phaser": "^3.80.1"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/cli": "^6.1.2",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/ios": "^6.1.2",
+    "@fontsource/press-start-2p": "^5.0.20",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2"
+  }
+}
