@@ -63,7 +63,7 @@ export class LevelSelectScene extends Phaser.Scene {
     const layer = this.add.container(dir === 0 ? 0 : dir * W, 0);
     const cellW = 108;
     const cellH = 100;
-    const gridTop = safeTop() + 186;
+    const gridTop = safeTop() + 220;
     const startX = W / 2 - ((COLS - 1) / 2) * cellW;
 
     for (let i = 0; i < PER_PAGE; i++) {
