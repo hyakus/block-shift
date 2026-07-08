@@ -21,7 +21,7 @@
  * "at least one empty tube" rule. A seeded PRNG keyed on (difficulty, level)
  * makes every level reproducible, and the fast solver double-checks the result.
  */
-import { TUBE_CAPACITY, type Difficulty } from "../config";
+import { TUBE_CAPACITY, levelSpec, type LevelSpec } from "../config";
 import type { Board } from "./types";
 import { isTubeComplete, topRunLength } from "./logic";
 import { solve } from "./solver";
@@ -40,13 +40,13 @@ function mulberry32(seed: number): () => number {
 
 export interface GeneratedLevel {
   board: Board;
-  difficulty: Difficulty;
+  spec: LevelSpec;
   levelNumber: number;
   tubeCount: number;
 }
 
-function seedFor(difficultyIndex: number, levelNumber: number): number {
-  return (difficultyIndex + 1) * 1_000_003 + levelNumber * 97 + 12345;
+function seedFor(levelNumber: number): number {
+  return levelNumber * 2_654_435_761 + 12_345;
 }
 
 function pick<T>(arr: T[], rng: () => number): T {
@@ -153,21 +153,18 @@ function acceptable(board: Board): boolean {
   return solve(board).solvable; // safety net; reverse-gen should always pass
 }
 
-export function generateLevel(
-  difficulty: Difficulty,
-  difficultyIndex: number,
-  levelNumber: number,
-): GeneratedLevel {
-  const baseSeed = seedFor(difficultyIndex, levelNumber);
+export function generateLevel(levelNumber: number): GeneratedLevel {
+  const spec = levelSpec(levelNumber);
+  const baseSeed = seedFor(levelNumber);
 
-  let board = scramble(difficulty.colors, difficulty.emptyTubes, mulberry32(baseSeed));
+  let board = scramble(spec.colors, spec.emptyTubes, mulberry32(baseSeed));
   for (let attempt = 1; !acceptable(board) && attempt < 80; attempt++) {
     board = scramble(
-      difficulty.colors,
-      difficulty.emptyTubes,
+      spec.colors,
+      spec.emptyTubes,
       mulberry32(baseSeed + attempt * 2654435761),
     );
   }
 
-  return { board, difficulty, levelNumber, tubeCount: board.length };
+  return { board, spec, levelNumber, tubeCount: board.length };
 }

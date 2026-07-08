@@ -69,6 +69,8 @@ if (import.meta.env.DEV) {
     (window as unknown as { __gen: typeof m.generateLevel }).__gen = m.generateLevel;
   });
   void import("./config").then((m) => {
-    (window as unknown as { __DIFFS: typeof m.DIFFICULTIES }).__DIFFS = m.DIFFICULTIES;
+    const w = window as unknown as { __spec: typeof m.levelSpec; __total: number };
+    w.__spec = m.levelSpec;
+    w.__total = m.TOTAL_LEVELS;
   });
 }

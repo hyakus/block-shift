@@ -127,24 +127,26 @@ export const THEME = {
   good: "#54d178",
 } as const;
 
-export interface Difficulty {
-  key: string;
-  label: string;
+/** Total number of levels in the single, continuous, numbered progression. */
+export const TOTAL_LEVELS = 120;
+
+export interface LevelSpec {
   /** Number of distinct colours (each contributes one full tube of blocks). */
   colors: number;
-  /** Extra empty tubes available for manoeuvring (min 1 per spec). */
+  /** Extra empty tubes available for manoeuvring (min 1). */
   emptyTubes: number;
 }
 
 /**
- * Difficulty ramp. More colours + fewer spare empty tubes = harder, matching
- * the spec's "more tubes and less initial moves". Always at least one empty
- * tube (spec requirement 7).
+ * Difficulty curve for a numbered level (1..TOTAL_LEVELS). Difficulty rises with
+ * the level number: colours climb 3 → 10 (a new colour every 15 levels), and
+ * spare tubes tighten from 2 → 1 once it gets hard (7+ colours, ~level 61).
+ * More colours also means a deeper scramble (see the generator). Always keeps at
+ * least one empty tube.
  */
-export const DIFFICULTIES: Difficulty[] = [
-  { key: "warmup", label: "WARM-UP", colors: 3, emptyTubes: 2 },
-  { key: "easy", label: "EASY", colors: 4, emptyTubes: 2 },
-  { key: "medium", label: "MEDIUM", colors: 6, emptyTubes: 2 },
-  { key: "hard", label: "HARD", colors: 8, emptyTubes: 1 },
-  { key: "expert", label: "EXPERT", colors: 10, emptyTubes: 1 },
-];
+export function levelSpec(level: number): LevelSpec {
+  const n = Math.max(1, Math.min(TOTAL_LEVELS, Math.floor(level)));
+  const colors = Math.min(10, 3 + Math.floor((n - 1) / 15));
+  const emptyTubes = colors >= 7 ? 1 : 2;
+  return { colors, emptyTubes };
+}
