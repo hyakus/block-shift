@@ -4,10 +4,11 @@
  */
 import Phaser from "phaser";
 import {
-  DIFFICULTIES,
+  levelSpec,
   safeBottom,
   safeTop,
   THEME,
+  TOTAL_LEVELS,
   VIRTUAL_HEIGHT,
   VIRTUAL_WIDTH,
 } from "../config";
@@ -30,19 +31,13 @@ import { generateLevel } from "../game/levelGenerator";
 import { solve } from "../game/solver";
 import { playComplete, playPick, playPour, playWin } from "../audio/sfx";
 import { adsAvailable, showRewardedAd } from "../ads";
-import {
-  LEVELS_PER_DIFFICULTY,
-  isUnlocked,
-  markCompleted,
-  recordStars,
-} from "../game/progress";
+import { isUnlocked, markCompleted, recordStars } from "../game/progress";
 
 const LIFT = 110;
 const TRAVEL = 190;
 const DROP = 150;
 
 export class GameScene extends Phaser.Scene {
-  private diffIndex = 0;
   private level = 1;
 
   private board: Board = [];
@@ -67,8 +62,7 @@ export class GameScene extends Phaser.Scene {
     super("Game");
   }
 
-  init(data: { diffIndex: number; level: number }): void {
-    this.diffIndex = data.diffIndex ?? 0;
+  init(data: { level: number }): void {
     this.level = data.level ?? 1;
     // Reset per-restart state (scenes are reused across restarts).
     this.tubes = [];
@@ -83,9 +77,8 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     drawRetroBackground(this);
-    const diff = DIFFICULTIES[this.diffIndex];
 
-    const gen = generateLevel(diff, this.diffIndex, this.level);
+    const gen = generateLevel(this.level);
     this.initialBoard = cloneBoard(gen.board);
     this.board = cloneBoard(gen.board);
 
@@ -98,24 +91,31 @@ export class GameScene extends Phaser.Scene {
 
   private buildHud(): void {
     const W = VIRTUAL_WIDTH;
-    const diff = DIFFICULTIES[this.diffIndex];
+    const spec = levelSpec(this.level);
     const top = safeTop();
 
-    pixelButton(this, 50, top + 40, 68, 36, "MENU", () => this.scene.start("LevelSelect", {
-      diffIndex: this.diffIndex,
-    }), { size: 8 });
+    pixelButton(this, 56, top + 42, 84, 44, "MENU", () =>
+      this.scene.start("LevelSelect", { level: this.level }), { size: 10 });
 
-    pixelText(this, W / 2, top + 30, `${diff.label}  •  LV ${this.level}`, 13, THEME.accentHex);
-    this.movesText = pixelText(this, W / 2, top + 58, "MOVES  0", 10, THEME.inkDim);
+    pixelText(this, W / 2, top + 28, `LEVEL ${this.level}`, 15, THEME.accentHex);
+    pixelText(
+      this,
+      W / 2,
+      top + 52,
+      `${spec.colors} COLOURS  •  ${spec.emptyTubes} FREE`,
+      8,
+      THEME.inkDim,
+    );
+    this.movesText = pixelText(this, W / 2, top + 70, "MOVES  0", 9, THEME.inkDim);
 
     // Bottom action bar.
-    const by = VIRTUAL_HEIGHT - 48 - safeBottom();
-    this.undoBtn = pixelButton(this, W / 2 - 128, by, 108, 46, "UNDO", () => this.undo(), {
-      size: 11,
+    const by = VIRTUAL_HEIGHT - 54 - safeBottom();
+    this.undoBtn = pixelButton(this, W / 2 - 140, by, 130, 58, "UNDO", () => this.undo(), {
+      size: 12,
     });
-    pixelButton(this, W / 2, by, 108, 46, "RESTART", () => this.restart(), { size: 10 });
-    pixelButton(this, W / 2 + 128, by, 108, 46, "HINT", () => this.hint(), {
-      size: 11,
+    pixelButton(this, W / 2, by, 130, 58, "RESTART", () => this.restart(), { size: 11 });
+    pixelButton(this, W / 2 + 140, by, 130, 58, "HINT", () => this.hint(), {
+      size: 12,
       fill: 0x2e6d7d,
     });
     this.undoBtn.setEnabled(false);
@@ -347,7 +347,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private playVictory(): void {
-    markCompleted(DIFFICULTIES[this.diffIndex].key, this.level);
+    markCompleted(this.level);
     playWin();
     this.victory?.play(this.tubes, this.board);
     // Let the bottom-to-top dissolve cascade and confetti eruption land before
@@ -507,31 +507,28 @@ export class GameScene extends Phaser.Scene {
   // ---- End-of-level overlays ------------------------------------------
 
   private showWin(): void {
-    const hasNext = this.level < LEVELS_PER_DIFFICULTY;
-    const nextUnlocked =
-      hasNext && isUnlocked(DIFFICULTIES[this.diffIndex].key, this.level + 1);
+    const hasNext = this.level < TOTAL_LEVELS;
+    const nextUnlocked = hasNext && isUnlocked(this.level + 1);
 
     const buttons: { label: string; fill?: number; cb: () => void }[] = [];
     if (hasNext) {
       buttons.push({
         label: "NEXT",
         fill: 0x2e7d46,
-        cb: () =>
-          nextUnlocked &&
-          this.scene.restart({ diffIndex: this.diffIndex, level: this.level + 1 }),
+        cb: () => nextUnlocked && this.scene.restart({ level: this.level + 1 }),
       });
     }
     buttons.push({ label: "REPLAY", cb: () => this.restart() });
     buttons.push({
       label: "LEVELS",
-      cb: () => this.scene.start("LevelSelect", { diffIndex: this.diffIndex }),
+      cb: () => this.scene.start("LevelSelect", { level: this.level }),
     });
 
     // Rate the finish against the solver's solution length ("par"): reward
     // near-optimal play. 3 stars ≈ par, dropping off as extra moves pile up.
     const par = Math.max(1, solve(this.initialBoard).moves.length);
     const stars = this.moveCount <= par + 2 ? 3 : this.moveCount <= par + 7 ? 2 : 1;
-    recordStars(DIFFICULTIES[this.diffIndex].key, this.level, stars);
+    recordStars(this.level, stars);
 
     this.buildOverlay(
       "SOLVED!",
@@ -552,7 +549,7 @@ export class GameScene extends Phaser.Scene {
       { label: "RESTART", fill: 0x2e7d46, cb: () => this.restart() },
       {
         label: "LEVELS",
-        cb: () => this.scene.start("LevelSelect", { diffIndex: this.diffIndex }),
+        cb: () => this.scene.start("LevelSelect", { level: this.level }),
       },
     ]);
   }
@@ -592,13 +589,13 @@ export class GameScene extends Phaser.Scene {
     layer.add([shade, panel, tt, st]);
 
     // Lay buttons out in a row.
-    const bw = 120;
-    const gap = 12;
+    const bw = 126;
+    const gap = 10;
     const totalW = buttons.length * bw + (buttons.length - 1) * gap;
     let bx = W / 2 - totalW / 2 + bw / 2;
     for (const b of buttons) {
-      const btn = pixelButton(this, bx, py + ph - 56, bw, 48, b.label, () => b.cb(), {
-        size: 11,
+      const btn = pixelButton(this, bx, py + ph - 60, bw, 56, b.label, () => b.cb(), {
+        size: 12,
         fill: b.fill,
       });
       layer.add(btn.container);
