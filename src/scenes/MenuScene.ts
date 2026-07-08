@@ -55,12 +55,12 @@ export class MenuScene extends Phaser.Scene {
     pixelText(this, W / 2, titleY + 110, "- PIXEL SORT PUZZLE -", 10, THEME.inkDim);
 
     // Buttons.
-    pixelButton(this, W / 2, playY, 240, 56, "PLAY", () => this.scene.start("LevelSelect"), {
+    pixelButton(this, W / 2, playY, 268, 70, "PLAY", () => this.scene.start("LevelSelect"), {
       fill: 0x2e7d46,
-      size: 18,
+      size: 20,
     });
-    pixelButton(this, W / 2, playY + 74, 240, 48, "HOW TO PLAY", () => this.showHelp(), {
-      size: 11,
+    pixelButton(this, W / 2, playY + 86, 268, 60, "HOW TO PLAY", () => this.showHelp(), {
+      size: 13,
     });
 
     // Progress.
@@ -203,7 +203,7 @@ export class MenuScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setResolution(2);
 
-    const close = pixelButton(this, W / 2, py + ph - 40, 150, 44, "GOT IT", () =>
+    const close = pixelButton(this, W / 2, py + ph - 44, 176, 52, "GOT IT", () =>
       layer.destroy(),
     );
 
