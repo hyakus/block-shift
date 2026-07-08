@@ -7,20 +7,21 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "sync": "cap sync",
-    "android": "cap run android",
-    "ios": "cap run ios"
+    "sync": "npm run build && cap sync",
+    "android": "npm run build && cap run android",
+    "ios": "npm run build && cap run ios"
   },
   "dependencies": {
+    "@capacitor-community/admob": "^6.2.0",
     "phaser": "^3.80.1"
   },
   "devDependencies": {
     "@capacitor/android": "^6.1.2",
-    "@capacitor/cli": "^6.1.2",
+    "@capacitor/cli": "^6.2.1",
     "@capacitor/core": "^6.1.2",
     "@capacitor/ios": "^6.1.2",
     "@fontsource/press-start-2p": "^5.0.20",
     "typescript": "^5.5.4",
-    "vite": "^5.4.2"
+    "vite": "^5.4.21"
   }
 }
