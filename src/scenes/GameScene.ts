@@ -3,9 +3,16 @@
  * with animation, undo/restart/hint, and win / dead-end detection.
  */
 import Phaser from "phaser";
-import { DIFFICULTIES, THEME, VIRTUAL_HEIGHT, VIRTUAL_WIDTH } from "../config";
+import {
+  DIFFICULTIES,
+  safeBottom,
+  safeTop,
+  THEME,
+  VIRTUAL_HEIGHT,
+  VIRTUAL_WIDTH,
+} from "../config";
 import { drawRetroBackground } from "../ui/background";
-import { FONT, pixelButton, pixelText, type PixelButton } from "../ui/widgets";
+import { drawStarRow, FONT, pixelButton, pixelText, type PixelButton } from "../ui/widgets";
 import { TubeSprite } from "../render/TubeSprite";
 import { VictoryFx } from "../render/VictoryFx";
 import { tubeHeight, tubeWidth } from "../render/metrics";
@@ -22,7 +29,13 @@ import {
 import { generateLevel } from "../game/levelGenerator";
 import { solve } from "../game/solver";
 import { playComplete, playPick, playPour, playWin } from "../audio/sfx";
-import { LEVELS_PER_DIFFICULTY, isUnlocked, markCompleted } from "../game/progress";
+import { adsAvailable, showRewardedAd } from "../ads";
+import {
+  LEVELS_PER_DIFFICULTY,
+  isUnlocked,
+  markCompleted,
+  recordStars,
+} from "../game/progress";
 
 const LIFT = 110;
 const TRAVEL = 190;
@@ -45,6 +58,10 @@ export class GameScene extends Phaser.Scene {
   private undoBtn!: PixelButton;
   private overlay: Phaser.GameObjects.Container | null = null;
   private victory?: VictoryFx;
+  /** Set once we've warned the player the current position is unwinnable. */
+  private stuckNotified = false;
+  /** Hints taken this attempt — the first is free, the rest cost a rewarded ad. */
+  private hintsUsed = 0;
 
   constructor() {
     super("Game");
@@ -60,6 +77,8 @@ export class GameScene extends Phaser.Scene {
     this.busy = false;
     this.moveCount = 0;
     this.overlay = null;
+    this.stuckNotified = false;
+    this.hintsUsed = 0;
   }
 
   create(): void {
@@ -80,16 +99,17 @@ export class GameScene extends Phaser.Scene {
   private buildHud(): void {
     const W = VIRTUAL_WIDTH;
     const diff = DIFFICULTIES[this.diffIndex];
+    const top = safeTop();
 
-    pixelButton(this, 50, 40, 68, 36, "MENU", () => this.scene.start("LevelSelect", {
+    pixelButton(this, 50, top + 40, 68, 36, "MENU", () => this.scene.start("LevelSelect", {
       diffIndex: this.diffIndex,
     }), { size: 8 });
 
-    pixelText(this, W / 2, 30, `${diff.label}  •  LV ${this.level}`, 13, THEME.accentHex);
-    this.movesText = pixelText(this, W / 2, 58, "MOVES  0", 10, THEME.inkDim);
+    pixelText(this, W / 2, top + 30, `${diff.label}  •  LV ${this.level}`, 13, THEME.accentHex);
+    this.movesText = pixelText(this, W / 2, top + 58, "MOVES  0", 10, THEME.inkDim);
 
     // Bottom action bar.
-    const by = VIRTUAL_HEIGHT - 48;
+    const by = VIRTUAL_HEIGHT - 48 - safeBottom();
     this.undoBtn = pixelButton(this, W / 2 - 128, by, 108, 46, "UNDO", () => this.undo(), {
       size: 11,
     });
@@ -130,8 +150,8 @@ export class GameScene extends Phaser.Scene {
     const spacing = Math.min(tw + 14, availW / perRow);
     const rowGap = rows > 1 ? 26 : 0;
     const totalH = rows * th + (rows - 1) * rowGap;
-    const playTop = 92;
-    const playBottom = VIRTUAL_HEIGHT - 84;
+    const playTop = 92 + safeTop();
+    const playBottom = VIRTUAL_HEIGHT - 84 - safeBottom();
     const startY = playTop + (playBottom - playTop - totalH) / 2;
 
     const positions: { cx: number; top: number }[] = [];
@@ -299,7 +319,31 @@ export class GameScene extends Phaser.Scene {
       this.time.delayedCall(200, () => this.playVictory());
     } else if (isDeadEnd(this.board)) {
       this.time.delayedCall(220, () => this.showFail());
+    } else if (!this.stuckNotified) {
+      // Soft-lock check: still have moves, but is the board actually winnable?
+      // Deferred so the pour animation settles first, and gated so we run the
+      // (potentially heavier) solver at most once per stuck position.
+      this.time.delayedCall(260, () => this.checkSoftLock());
     }
+  }
+
+  /** Warn the player if the position has become impossible to win. */
+  private checkSoftLock(): void {
+    if (this.stuckNotified || this.overlay || this.busy) return;
+    if (isSolved(this.board) || isDeadEnd(this.board)) return;
+    if (solve(this.board).solvable) return; // still winnable — nothing to do
+    this.stuckNotified = true;
+    this.buildOverlay("STUCK", "No way to win from here", THEME.danger, [
+      { label: "UNDO", fill: 0x3d3466, cb: () => this.undoFromOverlay() },
+      { label: "RESTART", fill: 0x2e7d46, cb: () => this.restart() },
+      {
+        label: "DISMISS",
+        cb: () => {
+          this.overlay?.destroy();
+          this.overlay = null;
+        },
+      },
+    ]);
   }
 
   private playVictory(): void {
@@ -314,12 +358,22 @@ export class GameScene extends Phaser.Scene {
   // ---- Controls --------------------------------------------------------
 
   private undo(): void {
-    if (this.busy || this.history.length === 0 || this.overlay) return;
+    if (this.busy || this.history.length === 0) return;
     this.deselect();
     this.board = this.history.pop()!;
     this.moveCount = Math.max(0, this.moveCount - 1);
+    this.stuckNotified = false; // position changed — re-evaluate winnability
     this.syncSprites();
     this.updateHud();
+  }
+
+  /** UNDO from within a win/fail/stuck overlay: dismiss it first, then undo. */
+  private undoFromOverlay(): void {
+    if (this.overlay) {
+      this.overlay.destroy();
+      this.overlay = null;
+    }
+    this.undo();
   }
 
   private restart(): void {
@@ -328,9 +382,16 @@ export class GameScene extends Phaser.Scene {
       this.overlay.destroy();
       this.overlay = null;
     }
+    // REPLAY reuses this scene, so tear down the victory FX ourselves (clears
+    // leftover liquid graphics and resets it so the next win animates).
+    this.victory?.destroy();
+    this.victory = new VictoryFx(this);
+
     this.selected = null;
     this.history = [];
     this.moveCount = 0;
+    this.stuckNotified = false;
+    this.hintsUsed = 0;
     this.board = cloneBoard(this.initialBoard);
     this.syncSprites();
     this.updateHud();
@@ -346,6 +407,16 @@ export class GameScene extends Phaser.Scene {
 
   private hint(): void {
     if (this.busy || this.overlay) return;
+    // First hint per attempt is free; after that, a rewarded ad buys one.
+    if (this.hintsUsed >= 1) {
+      this.showHintAdPrompt();
+      return;
+    }
+    this.hintsUsed++;
+    this.doHint();
+  }
+
+  private doHint(): void {
     this.deselect();
     const res = solve(this.board);
     if (!res.solvable || !res.firstMove) {
@@ -359,6 +430,65 @@ export class GameScene extends Phaser.Scene {
       this.tubes[from]?.setHint(false);
       this.tubes[to]?.setHint(false);
     });
+  }
+
+  private showHintAdPrompt(): void {
+    this.buildOverlay("NEED A HINT?", "Watch a short ad for one more", THEME.accentHex, [
+      {
+        label: "WATCH AD",
+        fill: 0x2e7d46,
+        cb: () => {
+          this.overlay?.destroy();
+          this.overlay = null;
+          this.playRewardedAd(() => this.doHint());
+        },
+      },
+      {
+        label: "CANCEL",
+        cb: () => {
+          this.overlay?.destroy();
+          this.overlay = null;
+        },
+      },
+    ]);
+  }
+
+  /** Show a rewarded ad for a hint: real AdMob on device, simulated on web. */
+  private playRewardedAd(onReward: () => void): void {
+    if (adsAvailable()) {
+      void showRewardedAd().then((earned) => {
+        if (earned) onReward();
+      });
+      return;
+    }
+    this.simulatedAd(onReward);
+  }
+
+  /** Timed placeholder ad used on the web build (no native ad SDK there). */
+  private simulatedAd(onReward: () => void): void {
+    const W = VIRTUAL_WIDTH;
+    const H = VIRTUAL_HEIGHT;
+    const layer = this.add.container(0, 0).setDepth(400);
+    this.overlay = layer;
+    const shade = this.add.rectangle(0, 0, W, H, 0x05040a, 0.96).setOrigin(0).setInteractive();
+    const title = pixelText(this, W / 2, H * 0.42, "AD", 44, THEME.accentHex).setStroke("#000", 8);
+    const tag = pixelText(this, W / 2, H * 0.42 + 46, "(placeholder)", 8, THEME.inkDim);
+    const count = pixelText(this, W / 2, H * 0.56, "REWARD IN 3", 12);
+    layer.add([shade, title, tag, count]);
+
+    let n = 3;
+    const step = (): void => {
+      n -= 1;
+      if (n >= 1) {
+        count.setText(`REWARD IN ${n}`);
+        this.time.delayedCall(1000, step);
+      } else {
+        layer.destroy();
+        this.overlay = null;
+        onReward();
+      }
+    };
+    this.time.delayedCall(1000, step);
   }
 
   private flashMessage(text: string, color: string): void {
@@ -397,12 +527,28 @@ export class GameScene extends Phaser.Scene {
       cb: () => this.scene.start("LevelSelect", { diffIndex: this.diffIndex }),
     });
 
-    this.buildOverlay("SOLVED!", `CLEARED IN ${this.moveCount} MOVES`, THEME.good, buttons);
+    // Rate the finish against the solver's solution length ("par"): reward
+    // near-optimal play. 3 stars ≈ par, dropping off as extra moves pile up.
+    const par = Math.max(1, solve(this.initialBoard).moves.length);
+    const stars = this.moveCount <= par + 2 ? 3 : this.moveCount <= par + 7 ? 2 : 1;
+    recordStars(DIFFICULTIES[this.diffIndex].key, this.level, stars);
+
+    this.buildOverlay(
+      "SOLVED!",
+      `${this.moveCount} MOVES  •  PAR ${par}`,
+      THEME.good,
+      buttons,
+    );
+    if (this.overlay) {
+      const g = this.add.graphics();
+      drawStarRow(g, VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2 - 150 + 172, 17, 46, stars);
+      this.overlay.add(g);
+    }
   }
 
   private showFail(): void {
     this.buildOverlay("NO MOVES LEFT", "THE TUBES ARE STUCK", THEME.danger, [
-      { label: "UNDO", fill: 0x3d3466, cb: () => this.undo() },
+      { label: "UNDO", fill: 0x3d3466, cb: () => this.undoFromOverlay() },
       { label: "RESTART", fill: 0x2e7d46, cb: () => this.restart() },
       {
         label: "LEVELS",
