@@ -23,7 +23,7 @@
  */
 import { TUBE_CAPACITY, levelSpec, type LevelSpec } from "../config";
 import type { Board } from "./types";
-import { isTubeComplete, topRunLength } from "./logic";
+import { topRunLength } from "./logic";
 import { solve } from "./solver";
 
 /** Deterministic PRNG (mulberry32) so levels are stable across sessions. */
@@ -121,7 +121,12 @@ function drainReserved(board: Board, reserved: number, rng: () => number): boole
   return true;
 }
 
-function scramble(colors: number, emptyTubes: number, rng: () => number): Board {
+function scramble(
+  colors: number,
+  emptyTubes: number,
+  rng: () => number,
+  depthMul = 1,
+): Board {
   // Solved start: one full tube per colour, then the spare empty tubes.
   const board: Board = [];
   for (let c = 0; c < colors; c++) board.push([c, c, c, c]);
@@ -130,7 +135,10 @@ function scramble(colors: number, emptyTubes: number, rng: () => number): Board 
   const count = board.length;
   const reserved = count - 1; // last spare — kept single-colour, drained at end
 
-  const target = colors * 12 + 20;
+  // Scramble depth. Jittered per attempt (depthMul) so re-seeds explore boards
+  // at different mix levels instead of all collapsing onto the same deeply-mixed
+  // arrangement — the single biggest source of look-alike levels.
+  const target = Math.round((colors * 12 + 20) * depthMul);
   let done = 0;
   let misses = 0;
   while (done < target && misses < target * 5) {
@@ -146,25 +154,117 @@ function emptyCount(board: Board): number {
   return board.filter((t) => t.length === 0).length;
 }
 
+/**
+ * Number of tubes that are already *fully sorted* (full and single-colour).
+ * Empty tubes are deliberately NOT counted — they are working space, not solved
+ * progress. (The old check used `isTubeComplete`, which treats an empty tube as
+ * complete; with 2 spare tubes that rejected almost every board and funnelled
+ * the whole difficulty band onto a handful of identical layouts.)
+ */
+function solvedTubeCount(board: Board): number {
+  return board.filter(
+    (t) => t.length === TUBE_CAPACITY && t.every((c) => c === t[0]),
+  ).length;
+}
+
 /** Acceptable = has working space, isn't near-solved, and is solvable. */
 function acceptable(board: Board): boolean {
   if (emptyCount(board) < 1) return false;
-  if (board.filter(isTubeComplete).length > 1) return false;
+  if (solvedTubeCount(board) > 1) return false; // don't hand the player a near-win
   return solve(board).solvable; // safety net; reverse-gen should always pass
 }
 
-export function generateLevel(levelNumber: number): GeneratedLevel {
+/**
+ * Colour-agnostic, tube-order-agnostic signature of a board's *shape*: relabel
+ * colours by first appearance and sort the tubes. Two boards that are the same
+ * puzzle up to recolouring/tube-reordering share a key, so we can guarantee
+ * every level is a genuinely different layout (not just a recolour).
+ */
+function shapeKey(board: Board): string {
+  // Sort tubes by raw content first so the key ignores tube position, THEN
+  // relabel colours by first appearance so it also ignores colour identity.
+  // (Relabelling before sorting would depend on tube order and miss layouts
+  // that are identical bar a shuffle of the tubes on screen.)
+  const sorted = board.map((t) => t.join(",")).sort();
+  const map = new Map<number, number>();
+  let next = 0;
+  return sorted
+    .map((s) =>
+      s === ""
+        ? ""
+        : s
+            .split(",")
+            .map((x) => {
+              const c = Number(x);
+              if (!map.has(c)) map.set(c, next++);
+              return map.get(c)!;
+            })
+            .join(","),
+    )
+    .join("|");
+}
+
+/** Fisher–Yates permutation of [0..n-1] from the seeded PRNG. */
+function permutation(n: number, rng: () => number): number[] {
+  const p = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [p[i], p[j]] = [p[j], p[i]];
+  }
+  return p;
+}
+
+// Session-memoised, deterministic sequence. Each level's shape is guaranteed
+// distinct from every lower-numbered level's (see `buildLevel`), so the result
+// depends only on the level number, never on the order levels are requested.
+const levelCache = new Map<number, GeneratedLevel>();
+const seenShapes = new Set<string>();
+let builtUpTo = 0;
+
+function buildLevel(levelNumber: number): GeneratedLevel {
   const spec = levelSpec(levelNumber);
   const baseSeed = seedFor(levelNumber);
 
-  let board = scramble(spec.colors, spec.emptyTubes, mulberry32(baseSeed));
-  for (let attempt = 1; !acceptable(board) && attempt < 80; attempt++) {
-    board = scramble(
-      spec.colors,
-      spec.emptyTubes,
-      mulberry32(baseSeed + attempt * 2654435761),
-    );
-  }
+  // One independent PRNG stream per level. Deriving each attempt's seed from
+  // this stream (rather than baseSeed + attempt * stride) decorrelates adjacent
+  // levels: with a shared stride, level N+1's attempt seeds are just level N's
+  // shifted by one, so the two explore almost the same boards and N+1 keeps
+  // landing on shapes N already claimed.
+  const seedRng = mulberry32(baseSeed);
 
-  return { board, spec, levelNumber, tubeCount: board.length };
+  let chosen: Board | null = null;
+  let fallback: Board | null = null; // first acceptable board, if none are fresh
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const rng = mulberry32((seedRng() * 0x1_0000_0000) >>> 0);
+    const depthMul = 0.7 + ((attempt * 7) % 12) / 10; // spread mix depth 0.7..1.8
+    const board = scramble(spec.colors, spec.emptyTubes, rng, depthMul);
+    if (!acceptable(board)) continue;
+    fallback ??= board;
+    if (!seenShapes.has(shapeKey(board))) {
+      chosen = board;
+      break;
+    }
+  }
+  const board = chosen ?? fallback ?? scramble(spec.colors, spec.emptyTubes, mulberry32(baseSeed));
+  seenShapes.add(shapeKey(board));
+
+  // Colour variety: shuffle which of the (curated, high-contrast) top-N colours
+  // each label maps to. Keeps the same distinct hue set — only the assignment
+  // changes — so contrast is preserved while consecutive levels look different.
+  const perm = permutation(spec.colors, mulberry32(baseSeed ^ 0x9e3779b9));
+  const painted = board.map((t) => t.map((c) => perm[c]));
+
+  return { board: painted, spec, levelNumber, tubeCount: painted.length };
+}
+
+export function generateLevel(levelNumber: number): GeneratedLevel {
+  const cached = levelCache.get(levelNumber);
+  if (cached) return cached;
+  // Build in order from where we left off so cross-level dedup is deterministic
+  // regardless of which level is requested first.
+  for (let n = builtUpTo + 1; n <= levelNumber; n++) {
+    if (!levelCache.has(n)) levelCache.set(n, buildLevel(n));
+  }
+  builtUpTo = Math.max(builtUpTo, levelNumber);
+  return levelCache.get(levelNumber)!;
 }
