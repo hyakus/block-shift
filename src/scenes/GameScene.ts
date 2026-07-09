@@ -20,6 +20,7 @@ import { tubeHeight, tubeWidth } from "../render/metrics";
 import type { Board } from "../game/types";
 import {
   applyMove,
+  canContinueFor,
   cloneBoard,
   isDeadEnd,
   isSolved,
@@ -36,6 +37,12 @@ import { isUnlocked, markCompleted, recordStars } from "../game/progress";
 const LIFT = 110;
 const TRAVEL = 190;
 const DROP = 150;
+
+/**
+ * Only warn "stuck" when a hard dead end is this close — i.e. the player can't
+ * keep playing for more than this many moves (and can't win in that window).
+ */
+const STUCK_LOOKAHEAD = 3;
 
 export class GameScene extends Phaser.Scene {
   private level = 1;
@@ -325,13 +332,15 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Warn the player if the position has become impossible to win. */
+  /** Warn only when a hard dead end is imminent (out of moves within a few turns). */
   private checkSoftLock(): void {
     if (this.stuckNotified || this.overlay || this.busy) return;
     if (isSolved(this.board) || isDeadEnd(this.board)) return;
-    if (solve(this.board).solvable) return; // still winnable — nothing to do
+    // Can the player still play past the look-ahead window (or win in it)? If so,
+    // stay quiet — only warn when they're about to run out of moves for good.
+    if (canContinueFor(this.board, STUCK_LOOKAHEAD + 1)) return;
     this.stuckNotified = true;
-    this.buildOverlay("STUCK", "No way to win from here", THEME.danger, [
+    this.buildOverlay("STUCK", "No moves left in a turn or two", THEME.danger, [
       { label: "UNDO", fill: 0x3d3466, cb: () => this.undoFromOverlay() },
       { label: "RESTART", fill: 0x2e7d46, cb: () => this.restart() },
       {

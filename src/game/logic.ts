@@ -104,3 +104,20 @@ export function legalMoves(board: Board): Move[] {
 export function isDeadEnd(board: Board): boolean {
   return !isSolved(board) && legalMoves(board).length === 0;
 }
+
+/**
+ * Can the player keep playing for at least `moves` more moves from here (or win
+ * within that window)? A bounded, short-circuiting DFS: it returns as soon as a
+ * single surviving line is found, so it's cheap for the small look-ahead we use
+ * to decide whether a hard dead end is imminent. `moves <= 0` is trivially true.
+ */
+export function canContinueFor(board: Board, moves: number): boolean {
+  if (isSolved(board)) return true; // winning isn't "stuck"
+  if (moves <= 0) return true;
+  for (const m of legalMoves(board)) {
+    const next = cloneBoard(board);
+    applyMove(next, m.from, m.to);
+    if (canContinueFor(next, moves - 1)) return true;
+  }
+  return false;
+}
