@@ -14,6 +14,7 @@ import {
   tubeWidth,
 } from "./metrics";
 import { blockTextureKey } from "./textures";
+import { glyphsEnabled } from "../game/settings";
 
 export class TubeSprite {
   readonly scene: Phaser.Scene;
@@ -132,9 +133,10 @@ export class TubeSprite {
   setStack(colors: number[]): void {
     this.blocks.forEach((b) => b.destroy());
     this.blocks = [];
+    const glyph = glyphsEnabled();
     colors.forEach((color, i) => {
       const img = this.scene.add
-        .image(this.cx, this.slotY(i), blockTextureKey(color))
+        .image(this.cx, this.slotY(i), blockTextureKey(color, glyph))
         .setDepth(5);
       img.setData("color", color);
       this.blocks.push(img);

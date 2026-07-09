@@ -20,6 +20,7 @@ import { tubeHeight, tubeWidth } from "../render/metrics";
 import type { Board } from "../game/types";
 import {
   applyMove,
+  canContinueFor,
   cloneBoard,
   isDeadEnd,
   isSolved,
@@ -36,6 +37,14 @@ import { isUnlocked, markCompleted, recordStars } from "../game/progress";
 const LIFT = 110;
 const TRAVEL = 190;
 const DROP = 150;
+
+/** Undos allowed per attempt; the next undo after this is a game over. */
+const UNDO_LIMIT = 5;
+/**
+ * Only warn "stuck" when a hard dead end is this close — i.e. the player can't
+ * keep playing for more than this many moves (and can't win in that window).
+ */
+const STUCK_LOOKAHEAD = 3;
 
 export class GameScene extends Phaser.Scene {
   private level = 1;
@@ -57,6 +66,8 @@ export class GameScene extends Phaser.Scene {
   private stuckNotified = false;
   /** Hints taken this attempt — the first is free, the rest cost a rewarded ad. */
   private hintsUsed = 0;
+  /** Undos spent this attempt; at UNDO_LIMIT the next undo ends the level. */
+  private undosUsed = 0;
 
   constructor() {
     super("Game");
@@ -73,6 +84,7 @@ export class GameScene extends Phaser.Scene {
     this.overlay = null;
     this.stuckNotified = false;
     this.hintsUsed = 0;
+    this.undosUsed = 0;
   }
 
   create(): void {
@@ -116,11 +128,13 @@ export class GameScene extends Phaser.Scene {
       size: 12,
       fill: 0x2e6d7d,
     });
-    this.undoBtn.setEnabled(false);
+    this.updateHud();
   }
 
   private updateHud(): void {
     this.movesText.setText(`MOVES  ${this.moveCount}`);
+    // Show how many undos remain; at 0 the button still works but ends the level.
+    this.undoBtn.setLabel(`UNDO ${Math.max(0, UNDO_LIMIT - this.undosUsed)}`);
     this.undoBtn.setEnabled(this.history.length > 0 && !this.busy);
   }
 
@@ -325,13 +339,15 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Warn the player if the position has become impossible to win. */
+  /** Warn only when a hard dead end is imminent (out of moves within a few turns). */
   private checkSoftLock(): void {
     if (this.stuckNotified || this.overlay || this.busy) return;
     if (isSolved(this.board) || isDeadEnd(this.board)) return;
-    if (solve(this.board).solvable) return; // still winnable — nothing to do
+    // Can the player still play past the look-ahead window (or win in it)? If so,
+    // stay quiet — only warn when they're about to run out of moves for good.
+    if (canContinueFor(this.board, STUCK_LOOKAHEAD + 1)) return;
     this.stuckNotified = true;
-    this.buildOverlay("STUCK", "No way to win from here", THEME.danger, [
+    this.buildOverlay("STUCK", "No moves left in a turn or two", THEME.danger, [
       { label: "UNDO", fill: 0x3d3466, cb: () => this.undoFromOverlay() },
       { label: "RESTART", fill: 0x2e7d46, cb: () => this.restart() },
       {
@@ -357,6 +373,12 @@ export class GameScene extends Phaser.Scene {
 
   private undo(): void {
     if (this.busy || this.history.length === 0) return;
+    // Out of undos: the attempt ends instead of rewinding.
+    if (this.undosUsed >= UNDO_LIMIT) {
+      this.showOutOfUndos();
+      return;
+    }
+    this.undosUsed++;
     this.deselect();
     this.board = this.history.pop()!;
     this.moveCount = Math.max(0, this.moveCount - 1);
@@ -390,6 +412,7 @@ export class GameScene extends Phaser.Scene {
     this.moveCount = 0;
     this.stuckNotified = false;
     this.hintsUsed = 0;
+    this.undosUsed = 0;
     this.board = cloneBoard(this.initialBoard);
     this.syncSprites();
     this.updateHud();
@@ -544,6 +567,17 @@ export class GameScene extends Phaser.Scene {
   private showFail(): void {
     this.buildOverlay("NO MOVES LEFT", "THE TUBES ARE STUCK", THEME.danger, [
       { label: "UNDO", fill: 0x3d3466, cb: () => this.undoFromOverlay() },
+      { label: "RESTART", fill: 0x2e7d46, cb: () => this.restart() },
+      {
+        label: "LEVELS",
+        cb: () => this.scene.start("LevelSelect", { level: this.level }),
+      },
+    ]);
+  }
+
+  /** Game over from exhausting the undo budget — no UNDO button here. */
+  private showOutOfUndos(): void {
+    this.buildOverlay("GAME OVER", `OUT OF UNDOS (${UNDO_LIMIT} USED)`, THEME.danger, [
       { label: "RESTART", fill: 0x2e7d46, cb: () => this.restart() },
       {
         label: "LEVELS",
