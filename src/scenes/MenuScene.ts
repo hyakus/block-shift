@@ -6,8 +6,12 @@ import { FONT, pixelButton, pixelText } from "../ui/widgets";
 import { blockTextureKey } from "../render/textures";
 import { totalProgress } from "../game/progress";
 import { isMuted, playBlip, setMuted, unlockAudio } from "../audio/sfx";
+import { glyphsEnabled, setGlyphsEnabled } from "../game/settings";
 
 export class MenuScene extends Phaser.Scene {
+  /** Decorative title blocks — retextured live when the glyph mode toggles. */
+  private demoBlocks: Phaser.GameObjects.Image[] = [];
+
   constructor() {
     super("Menu");
   }
@@ -24,10 +28,13 @@ export class MenuScene extends Phaser.Scene {
     const playY = Math.round(H * 0.55);
 
     // Decorative bobbing blocks above the title.
+    this.demoBlocks = [];
     const demoColors = [0, 1, 2, 3, 4, 5];
     demoColors.forEach((c, i) => {
       const bx = W / 2 - (demoColors.length - 1) * 26 + i * 52;
-      const img = this.add.image(bx, blocksY, blockTextureKey(c)).setScale(1.15);
+      const img = this.add.image(bx, blocksY, blockTextureKey(c, glyphsEnabled())).setScale(1.15);
+      img.setData("colorIndex", c);
+      this.demoBlocks.push(img);
       this.tweens.add({
         targets: img,
         y: blocksY - 12,
@@ -86,6 +93,7 @@ export class MenuScene extends Phaser.Scene {
     pixelText(this, W / 2, H - 30 - safeBottom(), "v0.1  •  MADE WITH PHASER", 7, THEME.inkDim);
 
     this.buildSoundToggle();
+    this.buildGlyphToggle();
   }
 
   /** Top-right speaker button that toggles (and persists) sound on/off. */
@@ -149,6 +157,58 @@ export class MenuScene extends Phaser.Scene {
         unlockAudio();
         playBlip();
       }
+    });
+  }
+
+  /**
+   * Accessibility toggle directly below the sound icon: shows an embossed shape
+   * glyph on every block so colours aren't the only cue. Off by default; the
+   * title blocks retexture live so the effect is visible immediately.
+   */
+  private buildGlyphToggle(): void {
+    const ix = VIRTUAL_WIDTH - 42;
+    const iy = Math.max(52, safeTop() + 32) + 60; // one row below the speaker
+    const g = this.add.graphics();
+
+    const draw = () => {
+      g.clear();
+      const on = glyphsEnabled();
+      const col = on ? THEME.accent : 0x6a6390;
+
+      // Rounded panel background (matches the sound button).
+      g.fillStyle(THEME.panel, 0.85);
+      g.fillRoundedRect(ix - 24, iy - 22, 48, 44, 9);
+      g.lineStyle(2, THEME.panelEdge, 1);
+      g.strokeRoundedRect(ix - 24, iy - 22, 48, 44, 9);
+
+      // A little block with a triangle glyph "carved" out of it.
+      g.fillStyle(col, 1);
+      g.fillRoundedRect(ix - 11, iy - 11, 22, 22, 4);
+      g.fillStyle(THEME.panel, 1);
+      g.fillTriangle(ix, iy - 6, ix + 6, iy + 6, ix - 6, iy + 6);
+    };
+    draw();
+
+    this.add
+      .text(ix, iy + 26, "SYMBOLS", {
+        fontFamily: FONT,
+        fontSize: "6px",
+        color: THEME.inkDim,
+      })
+      .setOrigin(0.5)
+      .setResolution(2)
+      .setDepth(1);
+
+    const zone = this.add.zone(ix, iy, 52, 48).setInteractive({ useHandCursor: true });
+    zone.on("pointerdown", () => {
+      const on = !glyphsEnabled();
+      setGlyphsEnabled(on);
+      draw();
+      // Retexture the title blocks so the change is visible right here.
+      this.demoBlocks.forEach((img) =>
+        img.setTexture(blockTextureKey(img.getData("colorIndex") as number, on)),
+      );
+      playBlip();
     });
   }
 
