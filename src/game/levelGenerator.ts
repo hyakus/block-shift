@@ -121,24 +121,24 @@ function drainReserved(board: Board, reserved: number, rng: () => number): boole
   return true;
 }
 
-function scramble(
-  colors: number,
-  emptyTubes: number,
-  rng: () => number,
-  depthMul = 1,
-): Board {
-  // Solved start: one full tube per colour, then the spare empty tubes.
+function scramble(spec: LevelSpec, rng: () => number, depthMul = 1): Board {
+  const { colors, emptyTubes, doubledColors } = spec;
+  // Solved start: one full tube per colour, a SECOND full tube for each doubled
+  // colour, then the spare empty tubes.
   const board: Board = [];
   for (let c = 0; c < colors; c++) board.push([c, c, c, c]);
+  for (let c = 0; c < doubledColors; c++) board.push([c, c, c, c]);
   for (let e = 0; e < emptyTubes; e++) board.push([]);
 
   const count = board.length;
   const reserved = count - 1; // last spare — kept single-colour, drained at end
 
-  // Scramble depth. Jittered per attempt (depthMul) so re-seeds explore boards
-  // at different mix levels instead of all collapsing onto the same deeply-mixed
-  // arrangement — the single biggest source of look-alike levels.
-  const target = Math.round((colors * 12 + 20) * depthMul);
+  // Scramble depth, scaled to the number of filled tubes (doubled colours make a
+  // bigger board that needs more mixing) and jittered per attempt (depthMul) so
+  // re-seeds explore boards at different mix levels instead of all collapsing
+  // onto the same deeply-mixed arrangement — the biggest source of look-alikes.
+  const filledTubes = colors + doubledColors;
+  const target = Math.round((filledTubes * 12 + 20) * depthMul);
   let done = 0;
   let misses = 0;
   while (done < target && misses < target * 5) {
@@ -237,7 +237,7 @@ function buildLevel(levelNumber: number): GeneratedLevel {
   for (let attempt = 0; attempt < 200; attempt++) {
     const rng = mulberry32((seedRng() * 0x1_0000_0000) >>> 0);
     const depthMul = 0.7 + ((attempt * 7) % 12) / 10; // spread mix depth 0.7..1.8
-    const board = scramble(spec.colors, spec.emptyTubes, rng, depthMul);
+    const board = scramble(spec, rng, depthMul);
     if (!acceptable(board)) continue;
     fallback ??= board;
     if (!seenShapes.has(shapeKey(board))) {
@@ -245,7 +245,7 @@ function buildLevel(levelNumber: number): GeneratedLevel {
       break;
     }
   }
-  const board = chosen ?? fallback ?? scramble(spec.colors, spec.emptyTubes, mulberry32(baseSeed));
+  const board = chosen ?? fallback ?? scramble(spec, mulberry32(baseSeed));
   seenShapes.add(shapeKey(board));
 
   // Colour variety: shuffle which of the (curated, high-contrast) top-N colours

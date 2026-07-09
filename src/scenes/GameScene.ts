@@ -98,14 +98,12 @@ export class GameScene extends Phaser.Scene {
       this.scene.start("LevelSelect", { level: this.level }), { size: 10 });
 
     pixelText(this, W / 2, top + 28, `LEVEL ${this.level}`, 15, THEME.accentHex);
-    pixelText(
-      this,
-      W / 2,
-      top + 52,
-      `${spec.colors} COLOURS  •  ${spec.emptyTubes} FREE`,
-      8,
-      THEME.inkDim,
-    );
+    const subtitle = [
+      `${spec.colors} COLOURS`,
+      ...(spec.doubledColors > 0 ? [`${spec.doubledColors} DOUBLED`] : []),
+      `${spec.emptyTubes} FREE`,
+    ].join("  •  ");
+    pixelText(this, W / 2, top + 52, subtitle, 8, THEME.inkDim);
     this.movesText = pixelText(this, W / 2, top + 70, "MOVES  0", 9, THEME.inkDim);
 
     // Bottom action bar.
