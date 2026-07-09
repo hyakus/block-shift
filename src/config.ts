@@ -109,6 +109,11 @@ export const BLOCK_COLORS: number[] = [
   0xff6fb5, // pink
   0xa3e635, // lime
   0x8b93ff, // periwinkle
+  // Colours 11-12 unlock only in the hardest levels (11+ colours, level 121+).
+  // Chosen to be un-confusable on a crowded board: one achromatic near-white and
+  // one dark, desaturated brown — neither collides in hue with the ten above.
+  0xe9e7f3, // white
+  0x9c6238, // brown
 ];
 
 /** UI / retro theme colours. */
@@ -128,25 +133,62 @@ export const THEME = {
 } as const;
 
 /** Total number of levels in the single, continuous, numbered progression. */
-export const TOTAL_LEVELS = 120;
+export const TOTAL_LEVELS = 480;
+
+/** Distinct colours available (one per palette entry). */
+export const MAX_COLORS = BLOCK_COLORS.length; // 12
+
+/**
+ * On-screen tube budget: what fits legibly on a phone (three rows of ≤6 tubes).
+ * The difficulty curve never asks for more tubes than this.
+ */
+export const MAX_TUBES = 18;
+
+/** First level at which every colour is in play (colours cap out). */
+export const FIRST_MAX_COLOR_LEVEL = (MAX_COLORS - 3) * 15 + 1; // 136
 
 export interface LevelSpec {
-  /** Number of distinct colours (each contributes one full tube of blocks). */
+  /** Number of distinct colours in the deal. */
   colors: number;
   /** Extra empty tubes available for manoeuvring (min 1). */
   emptyTubes: number;
+  /**
+   * Colours dealt as TWO full tubes instead of one — the endgame difficulty
+   * lever, once all hues are already in play. 0 for the classic levels (≤135).
+   */
+  doubledColors: number;
 }
 
 /**
- * Difficulty curve for a numbered level (1..TOTAL_LEVELS). Difficulty rises with
- * the level number: colours climb 3 → 10 (a new colour every 15 levels), and
- * spare tubes tighten from 2 → 1 once it gets hard (7+ colours, ~level 61).
- * More colours also means a deeper scramble (see the generator). Always keeps at
- * least one empty tube.
+ * Difficulty curve for a numbered level (1..TOTAL_LEVELS), in two phases:
+ *
+ *  1. Ramp (1–135): colours climb 3 → 12 (a new colour every 15 levels), and
+ *     spare tubes tighten 2 → 1 once it gets hard (7+ colours, ~level 61).
+ *  2. Endgame (136+): every hue is in play, so difficulty keeps rising by
+ *     doubling more colours into two-tube runs (`doubledColors`), while a
+ *     periodic 2-free-tube "breather" makes the curve pulse instead of grind.
+ *
+ * Levels 1–135 are unaffected by phase 2 (doubledColors is 0 there), so earlier
+ * progress and boards stay identical. The tube budget is never exceeded.
  */
 export function levelSpec(level: number): LevelSpec {
   const n = Math.max(1, Math.min(TOTAL_LEVELS, Math.floor(level)));
-  const colors = Math.min(10, 3 + Math.floor((n - 1) / 15));
-  const emptyTubes = colors >= 7 ? 1 : 2;
-  return { colors, emptyTubes };
+  const colors = Math.min(MAX_COLORS, 3 + Math.floor((n - 1) / 15));
+
+  let emptyTubes = colors >= 7 ? 1 : 2;
+  let doubledColors = 0;
+
+  if (colors === MAX_COLORS) {
+    const adv = n - FIRST_MAX_COLOR_LEVEL; // 0,1,2,… into the endgame
+    doubledColors = Math.min(5, Math.floor(adv / 58)); // 0 → 5 across the tier
+    emptyTubes = (adv + 1) % 5 === 0 ? 2 : 1; // every 5th endgame level eases up
+  }
+
+  // Never exceed the on-screen tube budget — trim doublings first (they cost the
+  // most tubes), so a breather level just carries fewer doubled colours.
+  while (colors + doubledColors + emptyTubes > MAX_TUBES && doubledColors > 0) {
+    doubledColors--;
+  }
+
+  return { colors, emptyTubes, doubledColors };
 }
